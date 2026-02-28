@@ -1,0 +1,39 @@
+# Variáveis de ambiente
+.env
+.env.*
+!.env.example
+
+# Git
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Testes e cobertura
+.pytest_cache/
+htmlcov/
+.coverage
+tests/
+
+# IDE
+.vscode/
+.idea/
+
+# Copilot workspace
+.copilot-workspace/
+
+# Documentação e infraestrutura
+*.md
+README.md
+infra/
+.github/
+
+# Documentação
+*.md
+README.md
