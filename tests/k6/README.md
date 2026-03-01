@@ -2,6 +2,11 @@
 
 Suíte completa de testes de carga para o sistema de encurtamento de URLs.
 
+**✅ Versão 2.0 — Refatorada com Comentários Detalhados**
+
+Todos os arquivos de teste agora incluem comentários explicativos em português para facilitar
+a compreensão do objetivo, funcionamento e métricas de cada teste.
+
 ---
 
 ## 📋 Visão Geral dos Testes
@@ -431,6 +436,180 @@ k6 cloud tests/k6/load_test.js
 
 # Logs em arquivo + resumo HTML/JSON por handleSummary
 k6 run tests/k6/load_test.js --log-output=file=logs/load-test.log --log-format=json
+```
+
+---
+
+## 🎯 Estratégia de Testes Recomendada
+
+### Fluxo de Validação
+
+1. **Smoke Test** → Garante funcionalidade básica
+2. **Load Test** → Valida performance em carga normal
+
+---
+
+## 📚 Estrutura do Código
+
+### Arquitetura Modular
+
+```
+tests/k6/
+├── smoke_test.js       # Validação básica
+├── load_test.js        # Carga normal com ratio 10:1
+├── stress_test.js      # Encontrar ponto de ruptura
+├── spike_test.js       # Picos repentinos de tráfego
+├── soak_test.js        # Estabilidade de longa duração
+├── run_k6.sh           # Script wrapper de execução
+└── lib/                # Biblioteca compartilhada
+    ├── common.js       # Geração de URLs e seeds
+    ├── metrics.js      # Factory de métricas (não usado atualmente)
+    ├── phase-detector.js # Detecção de fase do spike test
+    └── reporting.js    # Geração de relatórios HTML/JSON
+```
+
+### Comentários Explicativos
+
+**Todos os arquivos agora incluem:**
+- ✅ Cabeçalhos JSDoc explicando objetivo e características
+- ✅ Comentários inline explicando lógica complexa
+- ✅ Documentação de variáveis de ambiente
+- ✅ Exemplos de uso e quando executar
+- ✅ Thresholds e métricas explicados
+
+**Benefícios:**
+- Facilita onboarding de novos desenvolvedores
+- Reduz tempo de compreensão do código
+- Melhora manutenibilidade
+
+---
+
+## 🔧 Correções Críticas Implementadas (v2.0)
+
+### 1. Imports Corrigidos
+**Problema:** Todos os testes importavam `./reporting.js` (caminho incorreto).  
+**Correção:** Atualizado para `./lib/reporting.js` em todos os arquivos.
+
+### 2. Spike Test Corrigido
+**Problema:** Importava função inexistente `getCurrentPhase`.  
+**Correção:** 
+- Função correta é `getPhase` de `./lib/phase-detector.js`
+- Agora calcula `elapsed` corretamente antes de chamar a função
+
+### 3. Comentários Completos
+**Adicionados:** Comentários explicativos em português em todos os testes e bibliotecas.
+
+---
+
+## 💡 Boas Práticas
+
+### Como Interpretar os Relatórios
+
+Após executar um teste, o relatório HTML mostra:
+
+1. **Overview:**
+   - Requisições totais
+   - Taxa de erro
+   - Throughput (req/s)
+
+2. **Métricas HTTP:**
+   - `http_req_duration`: Latência das requisições
+     - **P95 < 500ms (escrita)**: Excelente
+     - **P95 < 100ms (leitura)**: Excelente
+   - `http_req_failed`: Taxa de falha HTTP
+     - **< 1%**: Aceitável
+     - **> 5%**: Problema crítico
+
+3. **Checks:**
+   - `create: status 201`: Sucesso na criação
+   - `redirect: status 302`: Sucesso no redirecionamento
+   - `Location matches original URL`: Validação de integridade
+
+4. **Métricas Customizadas:**
+   - `errors`: Taxa de erro geral
+   - `create_errors`: Erros específicos de criação
+   - `redirect_errors`: Erros específicos de redirecionamento
+
+### Comparação Entre Execuções
+
+Para comparar performance entre versões:
+
+```bash
+# Executar teste base (versão antiga)
+./run_k6.sh load
+
+# Fazer mudanças no código
+
+# Executar teste comparativo (versão nova)
+./run_k6.sh load
+
+# Comparar os arquivos JSON em results/
+# Métricas-chave para comparar:
+#   - http_req_duration (p95, p99)
+#   - errors (rate)
+#   - http_req_failed (rate)
+```
+
+### Quando Considerar o Teste Bem-Sucedido?
+
+| Teste | Sucesso Se: |
+|-------|-------------|
+| **Smoke** | Taxa de erro < 1% + P95 < 1s |
+| **Load** | P95 escrita < 500ms + P95 leitura < 100ms + erro < 1% |
+| **Stress** | Sistema sobrevive até 600+ VUs sem colapso total |
+| **Spike** | Taxa de erro no spike < 30% + recuperação < 5% |
+| **Soak** | Latência estável por 8h + erro consistente < 1% |
+
+---
+
+## ⚠️ Troubleshooting
+
+### Problema: "Module not found: ./reporting.js"
+**Causa:** Versão antiga do código (antes da v2.0).  
+**Solução:** Pull das últimas alterações ou corrigir import para `./lib/reporting.js`.
+
+### Problema: "getCurrentPhase is not a function"
+**Causa:** Spike test com import incorreto.  
+**Solução:** Usar `getPhase` e calcular `elapsed` corretamente.
+
+### Problema: Taxa de erro alta (> 10%)
+**Causas possíveis:**
+- Sistema não está rodando (verificar `docker compose ps`)
+- Health check falhou (verificar logs com `docker compose logs`)
+- Carga muito alta para infraestrutura atual
+- Rate limiting ativado no Nginx
+
+**Solução:**
+```bash
+# Verificar se sistema está UP
+docker compose ps
+
+# Verificar logs
+docker compose logs app
+
+# Testar endpoint manualmente
+curl http://localhost/health
+
+# Se necessário, reduzir carga do teste
+k6 run -e WRITE_RATE=5 -e READ_RATE=45 tests/k6/load_test.js
+```
+
+### Problema: Soak test falha após várias horas
+**Causas possíveis:**
+- Memory leak no código Python
+- Conexões do Cassandra não fechadas
+- Pool Redis esgotado
+
+**Solução:**
+```bash
+# Durante o teste, monitorar recursos
+docker stats
+
+# Verificar conexões abertas
+docker exec url-shortener-cassandra nodetool info | grep "Native Connections"
+
+# Verificar memória do Redis
+docker exec url-shortener-redis redis-cli INFO memory
 ```
 
 ---

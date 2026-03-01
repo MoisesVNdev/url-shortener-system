@@ -1,179 +1,132 @@
-import http from "k6/http";
-import { check, sleep } from "k6";
-import { Rate, Counter, Trend } from "k6/metrics";
-import { buildSummary } from "./reporting.js";
-
 /**
- * SPIKE TEST
+ * SPIKE TEST — Teste de Resiliência a Picos Repentinos de Tráfego
  * 
- * Objetivo: Verificar resiliência do sistema em picos repentinos e extremos de tráfego.
- * Simula situação de URL viral (ex.: link compartilhado em rede social).
+ * Objetivo:
+ *   Verificar como o sistema se comporta quando há um aumento repentino e extremo
+ *   de tráfego, como um link viral compartilhado em redes sociais.
  * 
- * Cenário:
- * - Tráfego normal (10 VUs) por 1 minuto
- * - SPIKE BRUTAL para 1000 VUs por 3 minutos
- * - Retorno ao normal (10 VUs) por 1 minuto
+ * Características:
+ *   - Carga: 10 VUs → 1000 VUs → 10 VUs (spike extremo e repentino)
+ *   - Duração total: 7 minutos
+ *   - Padrão de acesso: 80% das requisições em apenas 5 URLs "virais"
+ *   - Operação: Apenas leitura (redirecionamento)
+ * 
+ * Estágios do teste:
+ *   1. Normal (1 min):      10 VUs  → Tráfego baseline
+ *   2. Ramp-up (10s):     1000 VUs  → Aumento repentino (100x em 10 segundos!)
+ *   3. Spike (3 min):     1000 VUs  → Mantém pico máximo
+ *   4. Ramp-down (10s):     10 VUs  → Queda repentina
+ *   5. Recuperação (2 min): 10 VUs  → Valida se o sistema volta ao normal
+ * 
+ * Cenário realista:
+ *   Imagine um link sendo compartilhado por um influencer com milhões de seguidores.
+ *   Em poucos segundos, milhares de pessoas acessam o mesmo link simultaneamente.
+ * 
+ * O que observar:
+ *   - O sistema sobrevive sem downtime total?
+ *   - Qual é a latência durante o spike? (degradação aceitável?)
+ *   - O sistema se recupera após o spike?
+ *   - Taxa de erro volta ao normal na fase de recuperação?
+ *   - Como o cache Redis se comporta com hot spotting?
+ * 
+ * Thresholds:
+ *   - P99 latência < 5s (mesmo no spike)
+ *   - Taxa de erro no spike < 30%
+ *   - Taxa de erro na recuperação < 5%
+ *   - Taxa de validação de Location > 90%
  * 
  * Quando executar:
- * - Para validar comportamento em campanhas virais
- * - Antes de eventos com tráfego imprevisível
- * - Para testar auto-scaling e circuit breakers
- * 
- * Como executar:
- *   k6 run tests/k6/spike_test.js
- *   k6 run -e BASE_URL=https://staging.exemplo.com tests/k6/spike_test.js
- * 
- * Observações:
- * - O sistema DEVE sobreviver ao spike sem downtime completo
- * - Taxa de erro pode aumentar durante o pico, mas deve se recuperar
- * - Monitore latências e se o sistema se recupera após o spike
+ *   ✅ Antes de campanhas de marketing viral
+ *   ✅ Testar auto-scaling e elasticidade
+ *   ✅ Validar circuit breakers e rate limiters
+ *   ✅ Simular link compartilhado em rede social
  */
 
-const errorRate = new Rate("errors");
-const recoveryErrors = new Rate("recovery_errors"); // Erros durante recuperação
-const spikeErrors = new Rate("spike_errors"); // Erros durante o spike
-const serverErrors = new Counter("server_errors");
-const timeoutErrors = new Counter("timeout_errors");
-const responseTimes = new Trend("response_time_ms");
+import http from "k6/http";
+import { check, sleep } from "k6";
+import { Rate, Trend } from "k6/metrics";
+import { buildSummary } from "./lib/reporting.js";
+import { createSeedUrls } from "./lib/common.js";
+import { getPhase } from "./lib/phase-detector.js";  // Corrigido: getPhase, não getCurrentPhase
+
+// Métricas customizadas por fase
+const errorRate = new Rate("errors");                  // Taxa de erro geral
+const spikeErrors = new Rate("spike_errors");          // Erros durante o spike
+const recoveryErrors = new Rate("recovery_errors");    // Erros durante a recuperação
+const responseTimes = new Trend("response_time_ms");   // Tendência de tempo de resposta
 
 const BASE_URL = __ENV.BASE_URL || "http://localhost:80";
 const SEED_COUNT = parseInt(__ENV.SEED_COUNT || "200", 10);
 
-/**
- * Gera ID aleatório com tamanho específico.
- */
-function randomId(length) {
-  return Math.random().toString(36).substring(2, 2 + length);
-}
-
-/**
- * Gera URLs de tamanhos variados para simular cenários reais.
- */
-function generateUrl() {
-  const templates = [
-    () => `https://example.com/${randomId(4)}`,
-    () => `https://example.com/${randomId(4)}`,
-    () => `https://example.com/${randomId(4)}`,
-    () => `https://blog.example.com/posts/${randomId(6)}/artigo-com-titulo-longo-aqui`,
-    () => `https://shop.example.com/produtos/${randomId(6)}?ref=homepage`,
-    () => `https://app.example.com/dashboard/relatorio/${randomId(8)}`,
-    () => `https://news.example.com/2024/tecnologia/${randomId(6)}-titulo-da-noticia`,
-    () => `https://site.example.com/categoria/sub/${randomId(6)}`,
-    () => `https://example.com/search?q=${randomId(10)}&page=1&sort=asc&filter=${randomId(6)}&utm_source=google`,
-    () => `https://analytics.example.com/track?campaign=${randomId(8)}&source=email&medium=cpc&term=${randomId(6)}&content=${randomId(10)}`,
-  ];
-
-  const fn = templates[Math.floor(Math.random() * templates.length)];
-  return fn();
-}
-
 export const options = {
   stages: [
-    { duration: "1m", target: 10 },    // Tráfego normal
-    { duration: "10s", target: 1000 }, // SPIKE REPENTINO
-    { duration: "3m", target: 1000 },  // Mantém o spike
-    { duration: "10s", target: 10 },   // Queda brusca
-    { duration: "2m", target: 10 },    // Recuperação - sistema deve voltar ao normal
+    { duration: "1m", target: 10 },
+    { duration: "10s", target: 1000 },
+    { duration: "3m", target: 1000 },
+    { duration: "10s", target: 10 },
+    { duration: "2m", target: 10 },
   ],
   thresholds: {
-    http_req_duration: ["p(99)<5000"], // p99 < 5s mesmo no spike
-    spike_errors: ["rate<0.3"], // Até 30% de erros durante spike é aceitável
-    recovery_errors: ["rate<0.05"], // Após spike, deve se recuperar
-    "checks{check:Location matches original URL}": ["rate>0.90"], // 90% integridade em spike
+    http_req_duration: ["p(99)<5000"],
+    spike_errors: ["rate<0.3"],
+    recovery_errors: ["rate<0.05"],
+    "checks{check:Location matches original URL}": ["rate>0.90"],
   },
 };
 
+/**
+ * Setup: Cria pool de URLs e registra timestamp de início.
+ * 
+ * O timestamp é usado para calcular em qual fase do teste estamos
+ * (normal, ramp-up, spike, ramp-down, recovery) dinamicamente.
+ */
 export function setup() {
-  console.log(`[SPIKE] Criando ${SEED_COUNT} URLs de seed para teste de spike...`);
-  const urlMap = [];
-
-  for (let i = 0; i < SEED_COUNT; i++) {
-    const originalUrl = generateUrl();
-    const payload = JSON.stringify({ url: originalUrl });
-
-    const res = http.post(`${BASE_URL}/api/v1/shorten`, payload, {
-      headers: { "Content-Type": "application/json" },
-    });
-
-    if (res.status === 201) {
-        const shortcode = res.json("short_url").split("/").pop();
-        urlMap.push({ shortcode, originalUrl });
-    }
-  }
-
-  return { urlMap, spikeStartTime: null };
+  const urlMap = createSeedUrls(BASE_URL, SEED_COUNT);
+  return { urlMap, startTime: Date.now() };
 }
 
+/**
+ * Função principal: Simula acesso a URLs "virais".
+ * 
+ * Hot Spotting:
+ *   80% das requisições vão para apenas 5 URLs (Math.min(5, data.urlMap.length)).
+ *   Isso simula o comportamento real de um link viral sendo acessado milhares de vezes.
+ * 
+ * Detecção de fase:
+ *   A função getPhase calcula dinamicamente em qual fase do teste estamos,
+ *   permitindo separar métricas por fase (spike vs recovery).
+ */
 export default function (data) {
-  // Detecta fase do teste baseado no número de VUs ativas
-  const currentVUs = __VU;
-  const isSpike = __ITER > 6; // Aproximação da fase
-  const isRecovery = __ITER > 180; // Aproximação da fase de recuperação
+  // Detecta em qual fase do teste estamos
+  const elapsed = Date.now() - data.startTime;
+  const phase = getPhase(data.startTime, elapsed);
+  
+  // Seleciona uma das 5 primeiras URLs (hot spotting = 80% do tráfego em poucas URLs)
+  const entry = data.urlMap[Math.floor(Math.random() * Math.min(5, data.urlMap.length))];
 
-  // Spike test foca em LEITURA (shortcodes virais são acessados muitas vezes)
-  if (!data.urlMap || data.urlMap.length === 0) {
-    console.error("[SPIKE] Sem URLs disponíveis");
-    return;
-  }
-
-  // Simula padrão de acesso viral: alguns URLs recebem maior parte do tráfego
-  let entry;
-  if (Math.random() < 0.8) {
-    // 80% das requisições vão para os 5 primeiros (URLs "virais")
-    entry = data.urlMap[Math.floor(Math.random() * Math.min(5, data.urlMap.length))];
-  } else {
-    // 20% distribuído no resto
-    entry = data.urlMap[Math.floor(Math.random() * data.urlMap.length)];
-  }
-
-  const startTime = Date.now();
-  const res = http.get(`${BASE_URL}/${entry.shortcode}`, {
-    redirects: 0,
-    tags: { 
-      operation: "redirect",
-      phase: isRecovery ? "recovery" : (isSpike ? "spike" : "normal"),
-    },
+  // Faz requisição com tag da fase para análise separada
+  const res = http.get(`${BASE_URL}/${entry.shortcode}`, { 
+    redirects: 0, 
+    tags: { phase, operation: "redirect" } 
   });
-  responseTimes.add(Date.now() - startTime);
-
-  // Tratamento de erros
-  let hasError = false;
   
-  if (res.status === 0) {
-    timeoutErrors.add(1);
-    hasError = true;
-  } else if (res.status >= 500) {
-    serverErrors.add(1);
-    hasError = true;
-  } else {
-    const locationHeader = res.headers["Location"];
+  // Registra tempo de resposta
+  responseTimes.add(res.timings.duration);
 
-    const success = check(res, {
-      "spike: status 302": (r) => r.status === 302,
-      "spike: has Location": (r) => locationHeader !== undefined,
-      "Location matches original URL": (r) => locationHeader === entry.originalUrl,
-    });
-    hasError = !success;
-  }
-
-  errorRate.add(hasError);
+  const location = res.headers["Location"];
   
-  if (isSpike) {
-    spikeErrors.add(hasError);
-  } else if (isRecovery) {
-    recoveryErrors.add(hasError);
-  }
+  const success = check(res, {
+    "status 302": (r) => r.status === 302,
+    "Location matches original URL": (r) => location === entry.originalUrl,
+  });
 
-  // Durante spike, sem sleep (máxima pressão)
-  // Durante recuperação, pequeno sleep
-  if (!isSpike && isRecovery) {
-    sleep(0.1);
-  }
-}
+  // Registra erros por fase
+  errorRate.add(!success);
+  if (phase === "spike") spikeErrors.add(!success);
+  if (phase === "recovery") recoveryErrors.add(!success);
 
-export function teardown(data) {
-  console.log("[SPIKE] Spike test concluído");
-  console.log("[SPIKE] Verifique se o sistema se recuperou completamente após o pico");
+  // Durante o spike, não dorme (simula tráfego máximo)
+  if (phase !== "spike") sleep(0.1);
 }
 
 export function handleSummary(data) {

@@ -1,187 +1,131 @@
+/**
+ * STRESS TEST — Encontrar o Ponto de Ruptura do Sistema
+ * 
+ * Objetivo:
+ *   Aumentar a carga progressivamente até o sistema começar a falhar, identificando
+ *   o limite máximo de throughput antes da degradação ou colapso.
+ * 
+ * Características:
+ *   - Carga progressiva: 50 → 100 → 300 → 600 → 1000 VUs
+ *   - Duração total: 15 minutos (6 estágios)
+ *   - Ratio 10:1 (90% leitura, 10% escrita)
+ *   - Setup prévio: 300 URLs de seed
+ * 
+ * Estágios do teste:
+ *   1. Aquecimento (2 min):    50 VUs  → Valida operação normal
+ *   2. Carga baixa (2 min):   100 VUs  → Início do estresse
+ *   3. Carga média (3 min):  300 VUs  → Sistema sob pressão
+ *   4. Carga alta (3 min):    600 VUs  → Possível início de degradação
+ *   5. Carga extrema (3 min): 1000 VUs → Ruptura esperada aqui
+ *   6. Recuperação (2 min):    0 VUs  → Valida se o sistema recupera
+ * 
+ * O que observar:
+ *   - Em qual estágio a taxa de erro começa a subir?
+ *   - A latência cresce linearmente ou exponencialmente?
+ *   - O sistema consegue se recuperar após reduzir a carga?
+ *   - Uso de CPU, memória, conexões do banco de dados
+ * 
+ * Thresholds:
+ *   - P95 latência < 2s (aceitável sob estresse)
+ *   - Taxa de erro < 10% (esperado em stress test)
+ *   - Taxa de validação de Location > 95%
+ * 
+ * Quando executar:
+ *   ✅ Para dimensionar infraestrutura (quantos servidores?)
+ *   ✅ Antes de eventos com tráfego esperado alto
+ *   ✅ Validar melhorias de escalabilidade
+ *   ✅ Descobrir gargalos (CPU, memória, banco de dados)
+ */
+
 import http from "k6/http";
 import { check, sleep } from "k6";
 import { Rate, Counter, Trend } from "k6/metrics";
-import { buildSummary } from "./reporting.js";
+import { buildSummary } from "./lib/reporting.js";
+import { generateUrl, createSeedUrls } from "./lib/common.js";
 
-/**
- * STRESS TEST
- * 
- * Objetivo: Encontrar o ponto de ruptura do sistema aumentando a carga progressivamente.
- * Aumenta de 10 VUs até 1000+ para identificar limites de capacidade.
- * 
- * Quando executar:
- * - Para dimensionar infraestrutura
- * - Antes de lançamentos com tráfego esperado alto
- * - Para validar melhorias de performance
- * 
- * Como executar:
- *   k6 run tests/k6/stress_test.js
- *   k6 run -e BASE_URL=https://staging.exemplo.com tests/k6/stress_test.js
- * 
- * Observações:
- * - O sistema deve suportar pelo menos os 3 primeiros estágios
- * - Falhas no estágio 4-5 são esperadas (esse é o objetivo)
- * - Monitore uso de CPU, memória, conexões de banco durante o teste
- */
-
-const errorRate = new Rate("errors");
-const createErrors = new Rate("create_errors");
-const redirectErrors = new Rate("redirect_errors");
-const serverErrors = new Counter("server_errors");
-const timeoutErrors = new Counter("timeout_errors");
-const responseTimes = new Trend("response_time_ms");
+// Métricas customizadas
+const errorRate = new Rate("errors");                // Taxa de erro geral
+const responseTimes = new Trend("response_time_ms");  // Tendência de tempo de resposta
 
 const BASE_URL = __ENV.BASE_URL || "http://localhost:80";
-const SEED_COUNT = parseInt(__ENV.SEED_COUNT || "100", 10);
-
-/**
- * Gera ID aleatório com tamanho específico.
- */
-function randomId(length) {
-  return Math.random().toString(36).substring(2, 2 + length);
-}
-
-/**
- * Gera URLs de tamanhos variados para simular cenários reais.
- */
-function generateUrl() {
-  const templates = [
-    () => `https://example.com/${randomId(4)}`,
-    () => `https://example.com/${randomId(4)}`,
-    () => `https://example.com/${randomId(4)}`,
-    () => `https://blog.example.com/posts/${randomId(6)}/artigo-com-titulo-longo-aqui`,
-    () => `https://shop.example.com/produtos/${randomId(6)}?ref=homepage`,
-    () => `https://app.example.com/dashboard/relatorio/${randomId(8)}`,
-    () => `https://news.example.com/2024/tecnologia/${randomId(6)}-titulo-da-noticia`,
-    () => `https://site.example.com/categoria/sub/${randomId(6)}`,
-    () => `https://example.com/search?q=${randomId(10)}&page=1&sort=asc&filter=${randomId(6)}&utm_source=google`,
-    () => `https://analytics.example.com/track?campaign=${randomId(8)}&source=email&medium=cpc&term=${randomId(6)}&content=${randomId(10)}`,
-  ];
-
-  const fn = templates[Math.floor(Math.random() * templates.length)];
-  return fn();
-}
+const SEED_COUNT = parseInt(__ENV.SEED_COUNT || "300", 10);
 
 export const options = {
   stages: [
-    { duration: "2m", target: 50 },   // Aquecimento
-    { duration: "2m", target: 100 },  // Carga normal
-    { duration: "3m", target: 300 },  // Aumentando pressão
-    { duration: "3m", target: 600 },  // Pressão alta
-    { duration: "3m", target: 1000 }, // Ponto de ruptura esperado
-    { duration: "2m", target: 0 },    // Recuperação (cooldown)
+    { duration: "2m", target: 50 },
+    { duration: "2m", target: 100 },
+    { duration: "3m", target: 300 },
+    { duration: "3m", target: 600 },
+    { duration: "3m", target: 1000 },
+    { duration: "2m", target: 0 },
   ],
   thresholds: {
-    // Não definimos thresholds rígidos - queremos ver onde quebra
-    http_req_duration: ["p(95)<2000"], // Alertar se p95 > 2s
-    errors: ["rate<0.1"], // Até 10% de erros é aceitável em stress test
-    "checks{check:Location matches original URL}": ["rate>0.95"], // 95% integridade em stress
+    http_req_duration: ["p(95)<2000"],
+    errors: ["rate<0.1"],
+    "checks{check:Location matches original URL}": ["rate>0.95"],
   },
 };
 
 export function setup() {
-  console.log(`[STRESS] Criando ${SEED_COUNT} URLs de seed...`);
-  const urlMap = [];
-
-  for (let i = 0; i < SEED_COUNT; i++) {
-    const originalUrl = generateUrl();
-    const payload = JSON.stringify({ url: originalUrl });
-
-    const res = http.post(`${BASE_URL}/api/v1/shorten`, payload, {
-      headers: { "Content-Type": "application/json" },
-    });
-
-    if (res.status === 201) {
-      const shortcode = res.json("short_url").split("/").pop();
-      urlMap.push({ shortcode, originalUrl });
-    }
-  }
-
-  console.log(`[STRESS] ${urlMap.length} URLs criadas. Iniciando stress test...`);
+  const urlMap = createSeedUrls(BASE_URL, SEED_COUNT);
   return { urlMap };
 }
 
+/**
+ * Função principal: Executada por cada VU.
+ * 
+ * Simula tráfego realista com ratio 10:1 (leitura:escrita).
+ * A cada iteração, há 10% de chance de fazer uma escrita e 90% de fazer uma leitura.
+ */
 export default function (data) {
-  // Ratio 1:9 (escrita:leitura)
+  // 10% de chance de ser operação de escrita (Math.random() < 0.1)
   const isWrite = Math.random() < 0.1;
+  
+  // Seleciona uma URL aleatória do pool de seeds
+  const entry = data.urlMap[Math.floor(Math.random() * data.urlMap.length)];
 
   if (isWrite) {
-    // Criação de URL
-    const originalUrl = generateUrl();
-    const payload = JSON.stringify({ url: originalUrl });
-
-    const startTime = Date.now();
-    const res = http.post(`${BASE_URL}/api/v1/shorten`, payload, {
-      headers: { "Content-Type": "application/json" },
-      tags: { operation: "create" },
-    });
-    responseTimes.add(Date.now() - startTime);
-
-    if (res.status === 0) {
-      timeoutErrors.add(1);
-      createErrors.add(1);
-      errorRate.add(1);
-    } else if (res.status >= 500) {
-      serverErrors.add(1);
-      createErrors.add(1);
-      errorRate.add(1);
-    } else {
-      const success = check(res, {
-        "create: status 201": (r) => r.status === 201,
-      });
-      
-      if (success && data.urlMap) {
-        const shortcode = res.json("short_url").split("/").pop();
-        data.urlMap.push({ shortcode, originalUrl });
+    // ========== OPERAÇÃO DE ESCRITA ==========
+    const res = http.post(
+      `${BASE_URL}/api/v1/shorten`, 
+      JSON.stringify({ url: generateUrl() }), 
+      { 
+        headers: { "Content-Type": "application/json" }, 
+        tags: { operation: "create" } 
       }
-      
-      errorRate.add(!success);
-      createErrors.add(!success);
-    }
-  } else {
-    // Redirecionamento
-    if (!data.urlMap || data.urlMap.length === 0) {
-      return;
-    }
-
-    const entry = data.urlMap[Math.floor(Math.random() * data.urlMap.length)];
-    const shortcode = entry.shortcode;
+    );
     
-    const startTime = Date.now();
-    const res = http.get(`${BASE_URL}/${entry.shortcode}`, {
-      redirects: 0,
-      tags: { operation: "redirect" },
+    // Registra tempo de resposta para análise de tendência
+    responseTimes.add(res.timings.duration);
+    
+    const success = check(res, { "create: status 201": (r) => r.status === 201 });
+    errorRate.add(!success);
+    
+  } else {
+    // ========== OPERAÇÃO DE LEITURA ==========
+    const res = http.get(
+      `${BASE_URL}/${entry.shortcode}`, 
+      { 
+        redirects: 0, 
+        tags: { operation: "redirect" } 
+      }
+    );
+    
+    // Registra tempo de resposta
+    responseTimes.add(res.timings.duration);
+    
+    const location = res.headers["Location"];
+    
+    const success = check(res, {
+      "redirect: status 302": (r) => r.status === 302,
+      "Location matches original URL": (r) => location === entry.originalUrl,
     });
-    responseTimes.add(Date.now() - startTime);
-
-    if (res.status === 0) {
-      timeoutErrors.add(1);
-      redirectErrors.add(1);
-      errorRate.add(1);
-    } else if (res.status >= 500) {
-      serverErrors.add(1);
-      redirectErrors.add(1);
-      errorRate.add(1);
-    } else {
-      const locationHeader = res.headers["Location"];
-
-      const success = check(res, {
-        "redirect: status 302": (r) => r.status === 302,
-        "redirect: has Location": (r) => locationHeader !== undefined,
-        "Location matches original URL": (r) => locationHeader === entry.originalUrl,
-      });
-
-      errorRate.add(!success);
-      redirectErrors.add(!success);
-    }
+    
+    errorRate.add(!success);
   }
-
+  
+  // Pausa de 100ms entre requisições
   sleep(0.1);
-}
-
-export function teardown(data) {
-  console.log("[STRESS] Stress test concluído");
-  console.log(`[STRESS] Total de URLs no pool: ${data.urlMap.length}`);
 }
 
 export function handleSummary(data) {
