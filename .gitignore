@@ -2,25 +2,31 @@
 .env
 .env.*
 !.env.example
+venv/
+.venv/
 
 # Python
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
 *.egg-info/
 dist/
 build/
+.ruff_cache/
+.mypy_cache/
 
 # Testes
 .pytest_cache/
 htmlcov/
 .coverage
+coverage.xml
+tests/k6/logs/
+tests/k6/results/
 
 # IDE
 .vscode/
 .idea/
 .history/
 
-# Copilot 
+# Copilot / GitHub (local apenas)
 .copilot-workspace/
-.github/
+/.github/

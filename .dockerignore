@@ -9,31 +9,32 @@
 
 # Python
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
 *.egg-info/
 dist/
 build/
+.ruff_cache/
+.mypy_cache/
 
 # Testes e cobertura
 .pytest_cache/
 htmlcov/
 .coverage
+coverage.xml
 tests/
+tests/k6/logs/
+tests/k6/results/
 
 # IDE
 .vscode/
 .idea/
+.history/
 
-# Copilot workspace
+# Copilot workspace e GitHub
 .copilot-workspace/
+.github/
 
 # Documentação e infraestrutura
 *.md
 README.md
 infra/
-.github/
-
-# Documentação
-*.md
-README.md
