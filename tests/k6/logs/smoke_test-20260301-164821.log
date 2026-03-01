@@ -1,0 +1,36 @@
+
+         /\      Grafana   /‾‾/  
+    /\  /  \     |\  __   /  /   
+   /  \/    \    | |/ /  /   ‾‾\ 
+  /          \   |   (  |  (‾)  |
+ / __________ \  |_|\_\  \_____/ 
+
+
+     execution: local
+        script: ./smoke_test.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 2 max VUs, 1m30s max duration (incl. graceful stop):
+              * default: 2 looping VUs for 1m0s (gracefulStop: 30s)
+
+      checks[2m......................................:[0m [36m0.00%[0m   [36;2m✓ 0[0m          [36;2m✗ 0[0m
+      [32m✓[0m { check:Location matches original URL }[2m...:[0m [36m0.00%[0m   [36;2m✓ 0[0m          [36;2m✗ 0[0m
+      data_received[2m...............................:[0m [36m0 B[0m     [36;2m0 B/s[0m
+      data_sent[2m...................................:[0m [36m0 B[0m     [36;2m0 B/s[0m
+    [32m✓[0m errors[2m......................................:[0m [36m0.00%[0m   [36;2m✓ 0[0m          [36;2m✗ 0[0m
+      http_req_blocked[2m............................:[0m avg=[36m0s[0m min=[36m0s[0m med=[36m0s[0m max=[36m0s[0m p(90)=[36m0s[0m p(95)=[36m0s[0m
+      http_req_connecting[2m.........................:[0m avg=[36m0s[0m min=[36m0s[0m med=[36m0s[0m max=[36m0s[0m p(90)=[36m0s[0m p(95)=[36m0s[0m
+    [32m✓[0m http_req_duration[2m...........................:[0m avg=[36m0s[0m min=[36m0s[0m med=[36m0s[0m max=[36m0s[0m p(90)=[36m0s[0m p(95)=[36m0s[0m
+    [31m✗[0m http_req_failed[2m.............................:[0m [36m100.00%[0m [36;2m✓ 1[0m          [36;2m✗ 0[0m
+      http_req_receiving[2m..........................:[0m avg=[36m0s[0m min=[36m0s[0m med=[36m0s[0m max=[36m0s[0m p(90)=[36m0s[0m p(95)=[36m0s[0m
+      http_req_sending[2m............................:[0m avg=[36m0s[0m min=[36m0s[0m med=[36m0s[0m max=[36m0s[0m p(90)=[36m0s[0m p(95)=[36m0s[0m
+      http_req_tls_handshaking[2m....................:[0m avg=[36m0s[0m min=[36m0s[0m med=[36m0s[0m max=[36m0s[0m p(90)=[36m0s[0m p(95)=[36m0s[0m
+      http_req_waiting[2m............................:[0m avg=[36m0s[0m min=[36m0s[0m med=[36m0s[0m max=[36m0s[0m p(90)=[36m0s[0m p(95)=[36m0s[0m
+      http_reqs[2m...................................:[0m [36m1[0m       [36;2m380.229438/s[0m
+Run       [ 100% ] setup()
+default   [   0% ]
+{"level":"info","msg":"[SMOKE] Iniciando smoke test (nível sênior)","source":"console","time":"2026-03-01T16:48:22-03:00"}
+{"error":"Post \"http://localhost:80/api/v1/shorten\": dial tcp 127.0.0.1:80: connect: connection refused","level":"warning","msg":"Request Failed","time":"2026-03-01T16:48:22-03:00"}
+{"level":"info","msg":"[REPORT] Gerando relatórios para smoke_test → Timestamp: 20260301-164821","source":"console","time":"2026-03-01T16:48:22-03:00"}
+{"level":"info","msg":"[k6-reporter v3.0.4] Generating HTML summary report, with theme: default","source":"console","time":"2026-03-01T16:48:22-03:00"}
+{"hint":"script exception","level":"error","msg":"Error: Falha no setup do smoke test\n\tat setup (file:///home/moisesvn/Documentos/Estudo/Portfolio/Encurtador%20de%20URL/url-shortener-system/tests/k6/smoke_test.js:65:33(36))\n","time":"2026-03-01T16:48:22-03:00"}

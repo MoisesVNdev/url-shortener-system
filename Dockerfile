@@ -1,22 +1,38 @@
-FROM python:3.12-slim
+# Estágio 1: Builder
+FROM python:3.12-slim AS builder
 
-# Dependências de build para cassandra-driver (C extensions)
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libffi-dev \
     curl \
-    && rm -rf /var/lib/apt/lists/* && \
-    pip install --no-cache-dir --upgrade pip setuptools wheel
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+COPY requirements.txt .
+RUN pip wheel --no-cache-dir --no-deps --wheel-dir /build/wheels -r requirements.txt
+
+# Estágio 2: Runner
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+RUN groupadd -r appgroup && useradd -r -g appgroup -m -u 1000 appuser
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copia apenas os pacotes compilados do builder
+COPY --from=builder /build/wheels /wheels
+RUN pip install --no-cache /wheels/* \
+    && rm -rf /wheels
 
-COPY . .
+# Copia o código já com as permissões corretas
+COPY --chown=appuser:appgroup . .
 
-# Criar usuário não-root para segurança
-RUN useradd -m -u 1000 appuser
 USER appuser
 
 EXPOSE 8000
