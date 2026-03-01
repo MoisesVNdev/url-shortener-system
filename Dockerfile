@@ -1,7 +1,12 @@
-FROM python:3.12-alpine
+FROM python:3.12-slim
 
 # Dependências de build para cassandra-driver (C extensions)
-RUN apk add --no-cache gcc musl-dev libffi-dev
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libffi-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/* && \
+    pip install --no-cache-dir --upgrade pip setuptools wheel
 
 WORKDIR /app
 
@@ -11,7 +16,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Criar usuário não-root para segurança
-RUN adduser -D appuser
+RUN useradd -m -u 1000 appuser
 USER appuser
 
 EXPOSE 8000

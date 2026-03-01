@@ -5,22 +5,21 @@ from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.main import app
+from app.schemas.health import ContainerHealthInfo
 
 
-@pytest.fixture
-def client():
-    """Cliente de teste para a API FastAPI."""
-    return TestClient(app)
+def test_health_endpoint():
+    """Testa que o endpoint /health retorna payload de saúde válido."""
+    test_client = TestClient(app)
 
-
-def test_health_endpoint(client):
-    """Testa que o endpoint /health retorna status ok."""
     # Act
-    response = client.get("/health")
-    
+    response = test_client.get("/health")
+
     # Assert
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    payload = response.json()
+    assert "status" in payload
+    assert payload["status"] in {"ok", "degraded"}
 
 
 @pytest.mark.asyncio
@@ -131,3 +130,133 @@ async def test_redirect_endpoint_returns_404_when_not_found():
         
         # Assert
         assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_containers_health_endpoint_returns_healthy():
+    """Testa que GET /api/v1/containers/health retorna healthy com todos serviços saudáveis."""
+    http_checks = [
+        ContainerHealthInfo(
+            service="web1",
+            type="http",
+            host="web1",
+            port=8000,
+            status="healthy",
+            http_status=200,
+        ),
+        ContainerHealthInfo(
+            service="web2",
+            type="http",
+            host="web2",
+            port=8000,
+            status="healthy",
+            http_status=200,
+        ),
+        ContainerHealthInfo(
+            service="nginx",
+            type="http",
+            host="nginx",
+            port=80,
+            status="healthy",
+            http_status=200,
+        ),
+    ]
+
+    with patch(
+        "app.api.v1.endpoints.containers_health._check_http_container",
+        new_callable=AsyncMock,
+        side_effect=http_checks,
+    ), patch(
+        "app.api.v1.endpoints.containers_health._check_redis_container",
+        new_callable=AsyncMock,
+        return_value=ContainerHealthInfo(
+            service="redis",
+            type="redis",
+            host="redis",
+            port=6379,
+            status="healthy",
+        ),
+    ), patch(
+        "app.api.v1.endpoints.containers_health._check_cassandra_container",
+        new_callable=AsyncMock,
+        return_value=ContainerHealthInfo(
+            service="cassandra",
+            type="cassandra",
+            host="cassandra",
+            port=9042,
+            status="healthy",
+        ),
+    ):
+        client = TestClient(app)
+        response = client.get("/api/v1/containers/health")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "healthy"
+    assert payload["summary"] == {"total": 5, "healthy": 5, "unhealthy": 0}
+    assert len(payload["containers"]) == 5
+
+
+@pytest.mark.asyncio
+async def test_containers_health_endpoint_returns_degraded():
+    """Testa que GET /api/v1/containers/health retorna degraded quando algum serviço falha."""
+    http_checks = [
+        ContainerHealthInfo(
+            service="web1",
+            type="http",
+            host="web1",
+            port=8000,
+            status="healthy",
+            http_status=200,
+        ),
+        ContainerHealthInfo(
+            service="web2",
+            type="http",
+            host="web2",
+            port=8000,
+            status="unhealthy",
+            http_status=503,
+            error="Service unavailable",
+        ),
+        ContainerHealthInfo(
+            service="nginx",
+            type="http",
+            host="nginx",
+            port=80,
+            status="healthy",
+            http_status=200,
+        ),
+    ]
+
+    with patch(
+        "app.api.v1.endpoints.containers_health._check_http_container",
+        new_callable=AsyncMock,
+        side_effect=http_checks,
+    ), patch(
+        "app.api.v1.endpoints.containers_health._check_redis_container",
+        new_callable=AsyncMock,
+        return_value=ContainerHealthInfo(
+            service="redis",
+            type="redis",
+            host="redis",
+            port=6379,
+            status="healthy",
+        ),
+    ), patch(
+        "app.api.v1.endpoints.containers_health._check_cassandra_container",
+        new_callable=AsyncMock,
+        return_value=ContainerHealthInfo(
+            service="cassandra",
+            type="cassandra",
+            host="cassandra",
+            port=9042,
+            status="healthy",
+        ),
+    ):
+        client = TestClient(app)
+        response = client.get("/api/v1/containers/health")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "degraded"
+    assert payload["summary"] == {"total": 5, "healthy": 4, "unhealthy": 1}

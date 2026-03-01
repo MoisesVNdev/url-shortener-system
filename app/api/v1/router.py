@@ -1,7 +1,8 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import redirect, shorten
+from app.api.v1.endpoints import containers_health, redirect, shorten
 
 router = APIRouter()
 router.include_router(shorten.router, prefix="/api/v1", tags=["shorten"])
+router.include_router(containers_health.router, prefix="/api/v1", tags=["health"])
 router.include_router(redirect.router, tags=["redirect"])

@@ -49,8 +49,6 @@ async def lifespan(_: FastAPI):  # noqa: ARG001
 
 app = FastAPI(title="URL Shortener", lifespan=lifespan)
 
-app.include_router(v1_router)
-
 
 @app.get("/health")
 async def health():
@@ -71,3 +69,6 @@ async def health():
             "status": "degraded",
             "error": str(exc),
         }
+
+
+app.include_router(v1_router)

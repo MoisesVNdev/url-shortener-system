@@ -1,10 +1,10 @@
 import logging
 from dataclasses import dataclass
+from typing import Any
 
 from cassandra.auth import PlainTextAuthProvider
 from cassandra.cluster import Cluster, PreparedStatement, Session
 from cassandra.policies import DCAwareRoundRobinPolicy
-from cassandra.query import ResultSet
 
 from app.core.config import settings
 
@@ -22,7 +22,7 @@ class CassandraSession:
     insert_stmt: PreparedStatement
     select_stmt: PreparedStatement
 
-    def execute(self, stmt: PreparedStatement, values: list) -> ResultSet:
+    def execute(self, stmt: PreparedStatement, values: list) -> Any:
         """Executa um prepared statement."""
         return self.session.execute(stmt, values)
 

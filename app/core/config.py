@@ -18,6 +18,14 @@ class Settings(BaseSettings):
     REDIS_HOST: str = "redis"
     REDIS_PORT: int = 6379
 
+    WEB1_HOST: str = "web1"
+    WEB2_HOST: str = "web2"
+    WEB_APP_PORT: int = 8000
+    WEB_HEALTH_PATH: str = "/health"
+    NGINX_HOST: str = "nginx"
+    NGINX_PORT: int = 80
+    NGINX_HEALTH_PATH: str = "/health"
+
     HASHIDS_SALT: str = ""
     CACHE_TTL: int = 86400
 
