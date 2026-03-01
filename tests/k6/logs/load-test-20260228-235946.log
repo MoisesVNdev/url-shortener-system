@@ -1,0 +1,4 @@
+{"level":"info","msg":"[SETUP] Criando 50 URLs de seed no ambiente...","source":"console","time":"2026-02-28T23:59:47-03:00"}
+{"level":"info","msg":"[SETUP] 50/50 URLs de seed criadas com sucesso","source":"console","time":"2026-02-28T23:59:47-03:00"}
+{"level":"info","msg":"[TEARDOWN] Teste finalizado. Pool final: 50 URLs","source":"console","time":"2026-02-28T23:59:52-03:00"}
+{"level":"info","msg":"[k6-reporter v3.0.3] Generating HTML summary report, with theme: default","source":"console","time":"2026-02-28T23:59:52-03:00"}

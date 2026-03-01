@@ -1,0 +1,4 @@
+{"level":"info","msg":"[SMOKE] Iniciando smoke test - verificação básica de funcionalidade","source":"console","time":"2026-02-28T23:58:11-03:00"}
+{"level":"info","msg":"[SMOKE] URL de teste criada: 4bmnYA","source":"console","time":"2026-02-28T23:58:11-03:00"}
+{"level":"info","msg":"[SMOKE] Smoke test concluído","source":"console","time":"2026-02-28T23:59:11-03:00"}
+{"level":"info","msg":"[k6-reporter v3.0.3] Generating HTML summary report, with theme: default","source":"console","time":"2026-02-28T23:59:11-03:00"}
