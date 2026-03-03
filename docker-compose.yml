@@ -1,4 +1,9 @@
 services:
+
+  # ─────────────────────────────────────────
+  # INFRAESTRUTURA
+  # ─────────────────────────────────────────
+
   cassandra:
     image: cassandra:5.0
     container_name: cassandra
@@ -6,8 +11,10 @@ services:
       - CASSANDRA_CLUSTER_NAME=url_shortener
       - CASSANDRA_DC=datacenter1
       - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
-      - MAX_HEAP_SIZE=512M
-      - HEAP_NEWSIZE=128M
+      - MAX_HEAP_SIZE=768M
+      - HEAP_NEWSIZE=192M
+      - LOCAL_JMX=no                        # Habilita JMX remoto para o exporter
+      - JVM_OPTS=-Dcom.sun.jndi.rmiURLParsing=legacy
     volumes:
       - cassandra_data:/var/lib/cassandra
       - ./infra/cassandra/init.cql:/docker-entrypoint-initdb.d/init.cql
@@ -16,14 +23,14 @@ services:
     healthcheck:
       test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
       interval: 30s
-      timeout: 10s
+      timeout: 15s
       retries: 10
-      start_period: 60s
+      start_period: 90s
     deploy:
       resources:
         limits:
-          cpus: '1.0'
-          memory: 1G
+          cpus: '1.5'
+          memory: 2G
 
   redis:
     image: redis:7.4-alpine
@@ -57,7 +64,7 @@ services:
     restart: unless-stopped
     stop_grace_period: 15s
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -80,7 +87,7 @@ services:
     networks:
       - backend
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/health"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -90,9 +97,152 @@ services:
           cpus: '0.2'
           memory: 128M
 
+  # ─────────────────────────────────────────
+  # EXPORTERS — coleta de métricas por serviço
+  # ─────────────────────────────────────────
+
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:1.3.0
+    container_name: nginx-exporter
+    command:
+      - --nginx.scrape-uri=http://nginx/nginx_status   # endpoint stub_status
+    networks:
+      - backend
+    depends_on:
+      - nginx
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64M
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    container_name: redis-exporter
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+    networks:
+      - backend
+    depends_on:
+      - redis
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64M
+
+  cassandra-exporter:
+    image: criteord/cassandra_exporter:2.3.8
+    container_name: cassandra-exporter
+    environment:
+      - CASSANDRA_EXPORTER_CONFIG_listenPort=8080
+      - CASSANDRA_EXPORTER_CONFIG_host=cassandra:7199   # porta JMX padrão
+    networks:
+      - backend
+    depends_on:
+      cassandra:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 128M
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.50.0
+    container_name: cadvisor
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  # ─────────────────────────────────────────
+  # OBSERVABILIDADE — Prometheus + Grafana
+  # ─────────────────────────────────────────
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.enable-remote-write-receiver'    # ← K6 envia métricas via remote write
+    networks:
+      - backend
+    depends_on:
+      - cadvisor
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: grafana
+    ports:
+      - "3005:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/provisioning/dashboards/k6_overview.json
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infra/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./infra/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+    networks:
+      - backend
+    depends_on:
+      - prometheus
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # ─────────────────────────────────────────
+  # TESTES DE CARGA — K6
+  # Executar manualmente: docker compose run --rm k6
+  # ─────────────────────────────────────────
+
+  k6:
+    image: grafana/k6:0.53.0
+    container_name: k6
+    networks:
+      - backend
+    environment:
+      - K6_PROMETHEUS_RW_SERVER_URL=http://prometheus:9090/api/v1/write
+      - K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM=true   # histogramas nativos
+    volumes:
+      - ./tests/k6:/scripts
+    command: run --out experimental-prometheus-rw /scripts/load_test.js
+    depends_on:
+      - nginx
+      - prometheus
+    profiles:
+      - testing    # Só sobe com: docker compose --profile testing up k6
+
 volumes:
   cassandra_data:
   redis_data:
+  prometheus_data:
+  grafana_data:
 
 networks:
   backend:

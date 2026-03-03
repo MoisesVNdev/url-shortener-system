@@ -2,6 +2,8 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+# 1. Adicione a importação do Instrumentator
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.api.v1.router import router as v1_router
 from app.db.cassandra import get_session
@@ -14,13 +16,6 @@ logger = logging.getLogger(__name__)
 async def lifespan(_: FastAPI):  # noqa: ARG001
     """
     Gerencia o ciclo de vida da aplicação: inicializa e encerra conexões.
-
-    Startup:
-        - Inicializa Cassandra (e seu schema)
-        - Inicializa Redis
-
-    Shutdown:
-        - Fecha a conexão com Redis
     """
     logger.info("Inicializando aplicação...")
     try:
@@ -28,7 +23,7 @@ async def lifespan(_: FastAPI):  # noqa: ARG001
         logger.info("✓ Cassandra inicializado com sucesso.")
         get_redis()
         logger.info("✓ Redis inicializado com sucesso.")
-    except OSError as exc:  # Cobre ConnectionError, EnvironmentError, etc.
+    except OSError as exc:
         logger.error("Falha na inicialização de banco de dados: %s", str(exc), exc_info=True)
         raise
 
@@ -49,6 +44,8 @@ async def lifespan(_: FastAPI):  # noqa: ARG001
 
 app = FastAPI(title="URL Shortener", lifespan=lifespan)
 
+# 2. Inicialize e exponha as métricas na sua aplicação
+Instrumentator().instrument(app).expose(app)
 
 @app.get("/health")
 async def health():
@@ -69,6 +66,5 @@ async def health():
             "status": "degraded",
             "error": str(exc),
         }
-
 
 app.include_router(v1_router)

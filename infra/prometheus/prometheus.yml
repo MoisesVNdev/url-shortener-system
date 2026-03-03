@@ -1,0 +1,87 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+  external_labels:
+    environment: 'load-test'
+    project: 'url-shortener'
+
+scrape_configs:
+
+  - job_name: 'fastapi_app'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets:
+          - 'url-shortener-system-web-1:8000'
+          - 'url-shortener-system-web-2:8000'
+        labels:
+          service: 'web'
+
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['nginx-exporter:9113']
+        labels:
+          container: 'nginx'
+
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+        labels:
+          container: 'redis'
+
+  - job_name: 'cassandra'
+    static_configs:
+      - targets: ['cassandra-exporter:8080']
+        labels:
+          container: 'cassandra'
+
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+    metric_relabel_configs:
+      - source_labels: [id]
+        regex: '/docker/([a-f0-9]{12})[a-f0-9]*'
+        target_label: short_id
+        replacement: '${1}'
+      - source_labels: [id]
+        regex: '/docker/0af01b1fa579[a-f0-9]*'
+        target_label: name
+        replacement: 'cassandra'
+      - source_labels: [id]
+        regex: '/docker/1200069bb180[a-f0-9]*'
+        target_label: name
+        replacement: 'web-2'
+      - source_labels: [id]
+        regex: '/docker/3cb44ba61d93[a-f0-9]*'
+        target_label: name
+        replacement: 'grafana'
+      - source_labels: [id]
+        regex: '/docker/539dc9daaa5d[a-f0-9]*'
+        target_label: name
+        replacement: 'web-1'
+      - source_labels: [id]
+        regex: '/docker/59bc541948bb[a-f0-9]*'
+        target_label: name
+        replacement: 'cassandra-exporter'
+      - source_labels: [id]
+        regex: '/docker/59ecdecab9c5[a-f0-9]*'
+        target_label: name
+        replacement: 'redis'
+      - source_labels: [id]
+        regex: '/docker/61bc7b926907[a-f0-9]*'
+        target_label: name
+        replacement: 'nginx-exporter'
+      - source_labels: [id]
+        regex: '/docker/61feaaf0e2e7[a-f0-9]*'
+        target_label: name
+        replacement: 'redis-exporter'
+      - source_labels: [id]
+        regex: '/docker/8b58a1b162a7[a-f0-9]*'
+        target_label: name
+        replacement: 'cadvisor'
+      - source_labels: [id]
+        regex: '/docker/ccdb1a863928[a-f0-9]*'
+        target_label: name
+        replacement: 'nginx'
+      - source_labels: [id]
+        regex: '/docker/.+'
+        action: keep

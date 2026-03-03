@@ -18,8 +18,9 @@ class Settings(BaseSettings):
     REDIS_HOST: str = "redis"
     REDIS_PORT: int = 6379
 
-    WEB1_HOST: str = "web1"
-    WEB2_HOST: str = "web2"
+    # No Docker Compose, o DNS padrão das réplicas é o nome do serviço (`web`).
+    WEB1_HOST: str = "web"
+    WEB2_HOST: str = "web"
     WEB_APP_PORT: int = 8000
     WEB_HEALTH_PATH: str = "/health"
     NGINX_HOST: str = "nginx"

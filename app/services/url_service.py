@@ -8,6 +8,8 @@ from app.services.shortcode import generate_shortcode
 
 logger = logging.getLogger(__name__)
 
+COUNTER_PREFIX = "counter:hits:"
+
 
 async def create_short_url(long_url: str) -> str:
     """
@@ -49,9 +51,12 @@ async def get_long_url(shortcode: str) -> str | None:
     Returns:
         URL original ou None se não encontrada.
     """
+    redis = get_redis()
+    
     # 1. Cache hit
     cached = await get_long_url_from_cache(shortcode)
     if cached:
+        await redis.incr(f"{COUNTER_PREFIX}{shortcode}")
         logger.debug("Cache hit para shortcode: %s", shortcode)
         return cached
 
@@ -67,6 +72,7 @@ async def get_long_url(shortcode: str) -> str | None:
 
     if row:
         await set_url_in_cache(shortcode, row.long_url)
+        await redis.incr(f"{COUNTER_PREFIX}{shortcode}")
         logger.debug("URL recuperada do Cassandra e cacheada: %s", shortcode)
         return row.long_url
 
