@@ -24,7 +24,7 @@ def get_redis() -> aioredis.Redis:
             f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}",
             encoding="utf-8",
             decode_responses=True,
-            max_connections=20,
+            max_connections=200,
         )
         logger.info("Conexão com Redis estabelecida: %s:%d", settings.REDIS_HOST, settings.REDIS_PORT)
     return _redis

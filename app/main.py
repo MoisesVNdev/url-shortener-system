@@ -3,11 +3,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 # 1. Adicione a importação do Instrumentator
-from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_fastapi_instrumentator import Instrumentator  # noqa: F401, E402
 
 from app.api.v1.router import router as v1_router
 from app.db.cassandra import get_session
 from app.db.redis_client import get_redis
+from app.schemas.health import HealthResponse
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +48,17 @@ app = FastAPI(title="URL Shortener", lifespan=lifespan)
 # 2. Inicialize e exponha as métricas na sua aplicação
 Instrumentator().instrument(app).expose(app)
 
-@app.get("/health")
-async def health():
-    """Endpoint de verificação de saúde da aplicação com check de dependências."""
+@app.get("/health", response_model=HealthResponse)
+async def health() -> HealthResponse:
+    """
+    Endpoint de verificação de saúde da aplicação com check de dependências.
+
+    Verifica conectividade com Redis e Cassandra. Retorna status 'ok' se ambos
+    os serviços responderam, ou 'degraded' se houver qualquer erro.
+
+    Returns:
+        HealthResponse contendo status geral e status específico de cada serviço.
+    """
     try:
         # Verificar Redis
         redis = get_redis()
@@ -59,12 +68,15 @@ async def health():
         session = get_session()
         session.execute(session.select_stmt, ["__health_check__"])
 
-        return {"status": "ok", "redis": "connected", "cassandra": "connected"}
-    except Exception as exc:
-        logger.warning("Health check falhou: %s", str(exc))
-        return {
-            "status": "degraded",
-            "error": str(exc),
-        }
+        return HealthResponse(
+            status="ok",
+            redis="connected",
+            cassandra="connected",
+        )
+    except (OSError, RuntimeError) as exc:  # noqa: BLE001\n        logger.warning(\"Health check falhou: %s\", str(exc))
+        return HealthResponse(
+            status="degraded",
+            error=str(exc),
+        )
 
 app.include_router(v1_router)

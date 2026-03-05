@@ -22,8 +22,12 @@ htmlcov/
 .coverage
 coverage.xml
 tests/
-tests/k6/logs/
-tests/k6/results/
+pytest.ini
+requirements-dev.txt
+
+# Logs e resultados
+logs/
+results/
 
 # IDE
 .vscode/

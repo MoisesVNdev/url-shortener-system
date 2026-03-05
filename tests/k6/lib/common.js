@@ -90,16 +90,50 @@ export function createSeedUrls(BASE_URL, count) {
   
   // Processa respostas e monta array de seeds
   const seeds = [];
-  responses.forEach((res) => {
-    if (res.status === 201) {
-      // Extrai o shortcode da resposta (ex: "http://localhost/D4p5" → "D4p5")
-      const shortcode = res.json("short_url").split("/").pop();
+  let failureCount = 0;
+  
+  responses.forEach((res, index) => {
+    if (res.status !== 201) {
+      failureCount++;
+      console.error(`[COMMON] Seed #${index + 1} falhou (status ${res.status})`);
+      return; // Pula esta seed
+    }
+    
+    try {
+      // Extrai a URL completa (ex: "http://localhost/D4p5")
+      const shortUrlFull = res.json("short_url");
+      if (!shortUrlFull || typeof shortUrlFull !== "string") {
+        console.error(`[COMMON] Seed #${index + 1} retornou short_url inválido:`, shortUrlFull);
+        failureCount++;
+        return;
+      }
+      
+      // Extrai apenas o shortcode (parte após última barra)
+      const shortcode = shortUrlFull.split("/").pop();
+      if (!shortcode || shortcode.length < 4) {
+        console.error(`[COMMON] Seed #${index + 1} shortcode inválido: "${shortcode}"`);
+        failureCount++;
+        return;
+      }
       
       // Recupera a URL original do corpo da requisição
-      seeds.push({ shortcode, originalUrl: JSON.parse(res.request.body).url });
+      const originalUrl = JSON.parse(res.request.body).url;
+      seeds.push({ shortcode, originalUrl });
+    } catch (e) {
+      console.error(`[COMMON] Seed #${index + 1} erro ao parsear resposta:`, e.message);
+      failureCount++;
     }
   });
   
-  console.log(`[COMMON] ${seeds.length}/${count} seeds criados com sucesso`);
+  console.log(`[COMMON] ${seeds.length}/${count} seeds criados com sucesso (${failureCount} falharam)`);
+  
+  if (seeds.length === 0) {
+    throw new Error("CRÍTICO: Nenhuma seed foi criada! O endpoint /api/v1/shorten está falhando.");
+  }
+  
+  if (seeds.length < count * 0.8) {
+    console.warn(`[COMMON] Aviso: Taxa de sucesso abaixo de 80% (${(seeds.length / count * 100).toFixed(1)}%)`);
+  }
+  
   return seeds;
 }

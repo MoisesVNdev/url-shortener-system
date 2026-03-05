@@ -54,6 +54,7 @@ services:
   web:
     build: .
     env_file: .env
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
     depends_on:
       cassandra:
         condition: service_healthy
@@ -72,8 +73,8 @@ services:
       replicas: 2
       resources:
         limits:
-          cpus: '0.5'
-          memory: 512M
+          cpus: '1.0'
+          memory: 768M
 
   nginx:
     image: nginx:1.27-alpine
@@ -94,8 +95,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.2'
-          memory: 128M
+          cpus: '0.5'
+          memory: 256M
 
   # ─────────────────────────────────────────
   # EXPORTERS — coleta de métricas por serviço

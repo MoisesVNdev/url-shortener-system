@@ -66,6 +66,42 @@ TEST_DURATION=30m ./run_k6.sh soak -o
 - ✅ Mostra onde ficaram os arquivos HTML/JSON gerados
 - ✅ Abre o relatório HTML no navegador (com `--open-report`)
 
+### 🔄 Execução Sequencial de Todos os Testes
+
+Use o script `run_all_tests.sh` para executar **smoke, load, stress e spike** em sequência:
+
+```bash
+cd tests/k6
+
+# Executar todos os testes (exceto soak) em sequência
+./run_all_tests.sh
+
+# Executar e abrir todos os relatórios HTML
+./run_all_tests.sh --open-reports
+./run_all_tests.sh -o
+
+# Com URL customizada
+BASE_URL=http://staging.exemplo.com ./run_all_tests.sh
+```
+
+**Características:**
+- ⏱️ **Duração total:** ~24 minutos (sem soak)
+- 🔄 **Ordem de execução:** smoke → load → stress → spike
+- ⏸️ **Pausa de 15s entre testes** para estabilização do sistema
+- 📊 **Resumo final** com taxa de sucesso/falha
+- ✅ **Continua mesmo se um teste falhar**
+- 🚫 **Não inclui soak_test** (8h) — execute manualmente se necessário
+
+**Por que não incluir soak_test?**
+- Dura **8 horas** (muito longo para execução em batch)
+- Deve ser executado isoladamente, preferencialmente overnight
+- Requer monitoramento dedicado para detectar memory leaks
+
+**Para executar soak_test individualmente:**
+```bash
+./run_k6.sh soak  # ⚠️ Reservar 8 horas
+```
+
 ### 📊 Como Acessar o `summary.html`
 
 Após executar um teste, o relatório HTML fica em:

@@ -8,6 +8,7 @@
 ![Redis](https://img.shields.io/badge/Redis-7.4-DC382D?style=for-the-badge&logo=redis&logoColor=white)
 ![Nginx](https://img.shields.io/badge/Nginx-1.27-009639?style=for-the-badge&logo=nginx&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![Docker Hub](https://img.shields.io/badge/Docker%20Hub-url--shortener--system-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 
 ---
 
@@ -230,6 +231,13 @@ Todas as variáveis são carregadas via arquivo `.env` na raiz do projeto utiliz
 | `GET` | `/api/v1/debug/urls` | Debug: lista URLs e top acessos | `200 OK` |
 | `GET` | `/metrics` | Métricas Prometheus | `200 OK` |
 
+<details>
+<summary>📸 Swagger UI — Documentação interativa da API</summary>
+
+![Swagger UI — Endpoints da API](docs/imagens/localhost-docs.png)
+
+</details>
+
 ---
 
 ### `POST /api/v1/shorten`
@@ -251,6 +259,13 @@ curl -X POST http://localhost/api/v1/shorten \
   "short_url": "http://localhost/D4p5"
 }
 ```
+
+<details>
+<summary>📸 Exemplo real no Swagger UI</summary>
+
+![POST /api/v1/shorten — Exemplo de resposta](docs/imagens/POST-api-v1-shorten.png)
+
+</details>
 
 **Schema de entrada** (`ShortenRequest`):
 
@@ -451,7 +466,7 @@ Todos os testes estão localizados em `tests/k6/`.
 
 ### Execução
 
-**Via script local (requer K6 instalado):**
+**Via script local — teste individual (requer K6 instalado):**
 
 ```bash
 ./tests/k6/run_k6.sh <teste> [--open-report]
@@ -465,7 +480,16 @@ Exemplos:
 ./tests/k6/run_k6.sh stress             # Stress test
 ```
 
-**Via Docker (recomendado — envia métricas ao Prometheus via remote write):**
+**Via script local — execução sequencial (smoke + load + stress + spike):**
+
+```bash
+./tests/k6/run_all_tests.sh              # Executa 4 testes (~24 min)
+./tests/k6/run_all_tests.sh --open-reports  # Abre todos os relatórios HTML
+```
+
+> ⏱️ Duração total: ~24 minutos | 🚫 Não inclui soak_test (8h) — execute manualmente se necessário.
+
+**Via Docker (executa apenas load_test — envia métricas ao Prometheus):**
 
 ```bash
 docker compose --profile testing up k6
@@ -479,6 +503,64 @@ Os relatórios são gerados automaticamente em:
 tests/k6/results/{teste}_test-summary-{timestamp}.html
 tests/k6/results/{teste}_test-summary-{timestamp}.json
 ```
+
+### Resultados dos Testes
+
+<details>
+<summary>🔍 Smoke Test (2 VUs — 1 min)</summary>
+
+#### Detailed Metrics
+![Smoke Test — Detailed Metrics](docs/imagens/smoke_test%20%20Detailed%20Metrics.png)
+
+#### Test Run Details
+![Smoke Test — Test Run Details](docs/imagens/smoke_test%20%20Test%20Run%20Details.png)
+
+#### Checks & Groups
+![Smoke Test — Checks & Groups](docs/imagens/smoke_test%20%20Checks%20%26%20Groups.png)
+
+</details>
+
+<details>
+<summary>📊 Load Test (100 req/s — 1 min)</summary>
+
+#### Detailed Metrics
+![Load Test — Detailed Metrics](docs/imagens/load_test%20%20%20Detailed%20Metrics.png)
+
+#### Test Run Details
+![Load Test — Test Run Details](docs/imagens/load_test%20%20Test%20Run%20Details.png)
+
+#### Checks & Groups
+![Load Test — Checks & Groups](docs/imagens/load_test%20%20Checks%20%26%20Groups.png)
+
+</details>
+
+<details>
+<summary>💥 Stress Test (rampa até 5x — 15 min)</summary>
+
+#### Detailed Metrics
+![Stress Test — Detailed Metrics](docs/imagens/stress_test%20%20Detailed%20Metrics.png)
+
+#### Test Run Details
+![Stress Test — Test Run Details](docs/imagens/stress_test%20%20Test%20Run%20Details.png)
+
+#### Checks & Groups
+![Stress Test — Checks & Groups](docs/imagens/stress_test%20%20Checks%20%26%20Groups.png)
+
+</details>
+
+<details>
+<summary>⚡ Spike Test (picos repentinos — 7 min)</summary>
+
+#### Detailed Metrics
+![Spike Test — Detailed Metrics](docs/imagens/spike_test%20%20Detailed%20Metrics.png)
+
+#### Test Run Details
+![Spike Test — Test Run Details](docs/imagens/spike_test%20%20Test%20Run%20Details.png)
+
+#### Checks & Groups
+![Spike Test — Checks & Groups](docs/imagens/spike_test%20%20Checks%20%26%20Groups.png)
+
+</details>
 
 ---
 
@@ -547,6 +629,7 @@ O endpoint `/metrics` é exposto automaticamente via `prometheus-fastapi-instrum
 | `infra/` | Configurações de infraestrutura (Nginx, Cassandra, Prometheus, Grafana) |
 | `tests/unit/` | Testes unitários (pytest + pytest-asyncio) |
 | `tests/k6/` | Testes de carga (K6) |
+| `tests/postman/` | Coleção Postman para testes manuais da API |
 
 ---
 
@@ -613,11 +696,37 @@ docker compose restart <serviço>
 
 ---
 
-## 14. Licença e Informações
+## 14. Testes Manuais (Postman)
+
+A coleção Postman para testes manuais da API está disponível em `tests/postman/URL_Shortener_Collection.json`.
+
+**Como importar:**
+
+1. Abra o Postman
+2. Clique em **Import** → **Upload Files**
+3. Selecione o arquivo `tests/postman/URL_Shortener_Collection.json`
+4. A variável `{{base_url}}` já está configurada para `http://localhost`
+
+A coleção inclui requests organizados para todos os endpoints da API: health check, criação de shortcodes, redirecionamento, health de containers e debug.
+
+---
+
+## 15. Inspiração
+
+Este projeto foi inspirado pelo vídeo **[Arquitetando um Encurtador de URL: O Maior Desafio dos Programadores em Entrevistas de System Design](https://www.youtube.com/watch?v=m_anIoKW7Jg)** do canal **[Renato Augusto](https://www.youtube.com/@RenatoAugustoTech)**. A arquitetura apresentada no vídeo serviu como base para o desenvolvimento deste encurtador de URL, ao qual acrescentei testes unitários, testes de carga (K6) e uma stack completa de observabilidade para validação da API em cenários reais de produção.
+
+Obrigado, Renato, pelo conteúdo de qualidade que motivou a criação deste projeto!
+
+---
+
+## 16. Licença e Contato
+
+Este projeto está licenciado sob a **MIT License** — consulte o arquivo [LICENSE](LICENSE) para detalhes.
 
 - **Repositório:** [https://github.com/MoisesVNdev/url-shortener-system](https://github.com/MoisesVNdev/url-shortener-system)
 - **Issues:** [https://github.com/MoisesVNdev/url-shortener-system/issues](https://github.com/MoisesVNdev/url-shortener-system/issues)
-
+- **LinkedIn:** [https://www.linkedin.com/in/moisesvnoliveira/](https://www.linkedin.com/in/moisesvnoliveira/)
+- **Email:** moisesvn.dev@gmail.com
 
 ---
 
@@ -633,3 +742,7 @@ docker compose restart <serviço>
 - [x] K6 via Docker usa `--profile testing`
 - [x] Nenhuma tecnologia foi adicionada que não está na stack listada
 - [x] Todos os blocos de código têm syntax highlighting correto
+- [x] Coleção Postman documentada (`tests/postman/URL_Shortener_Collection.json`)
+- [x] LinkedIn e email de contato presentes
+- [x] Seção de inspiração com créditos ao vídeo do Renato Augusto
+- [x] Licença MIT referenciada corretamente

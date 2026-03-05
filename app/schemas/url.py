@@ -1,19 +1,27 @@
 from datetime import datetime
 
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
 
 
 class ShortenRequest(BaseModel):
     """Schema de entrada para encurtamento de URL."""
 
     model_config = ConfigDict(str_strip_whitespace=True)
-    url: AnyHttpUrl
+    url: AnyHttpUrl = Field(
+        ...,
+        description="URL longa a ser encurtada. Deve ser uma URL válida (http/https).",
+        examples=["https://www.example.com/very/long/url/path?param=value"],
+    )
 
 
 class ShortenResponse(BaseModel):
     """Schema de resposta com a URL encurtada."""
 
-    short_url: str
+    short_url: str = Field(
+        ...,
+        description="URL encurtada completa em formato http(s)://host/shortcode.",
+        examples=["http://localhost/Dx4p"],
+    )
 
 
 # --- Schemas do endpoint de debug ---

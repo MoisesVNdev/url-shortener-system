@@ -2,40 +2,30 @@
  * LOAD TEST — URL Shortener API
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * Cenários disponíveis (selecionar via K6_SCENARIO):
- *
- *   smoke  → Validação rápida: saúde da API + 1 ciclo criar/redirecionar
- *            2 VUs, 1 minuto — rode antes de qualquer teste de carga
- *
- *   load   → Carga normal com ratio 10:1 (leitura:escrita)
- *            escrita: 10 req/s | leitura: 90 req/s — duração configurável
- *
- *   stress → Encontra o ponto de quebra com rampa agressiva (ratio 10:1 mantido)
- *            escrita: 10→50 req/s | leitura: 90→450 req/s
- *
- *   soak   → Detecta vazamentos de memória com carga baixa e longa duração
- *            escrita: 5 req/s  | leitura: 45 req/s — 30 minutos
- *
- *   all    → Todos os cenários em sequência
+ * Objetivo:
+ *   Simular carga normal esperada em produção com ratio 10:1 (leitura:escrita)
+ *   - Escrita: 10 req/s  (10% do tráfego)
+ *   - Leitura: 90 req/s  (90% do tráfego)
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * Execução:
  *
- *   # Dentro do Docker (recomendado):
- *   K6_SCENARIO=smoke  docker compose --profile testing run --rm k6
- *   K6_SCENARIO=load   docker compose --profile testing run --rm k6
- *   K6_SCENARIO=stress docker compose --profile testing run --rm k6
- *   K6_SCENARIO=soak   docker compose --profile testing run --rm k6
+ *   # Via Docker (envia métricas ao Prometheus):
+ *   docker compose --profile testing up k6
  *
- *   # Local (requer k6 instalado):
- *   K6_SCENARIO=load BASE_URL=http://localhost:80 k6 run load_test.js
+ *   # Via script local (gera relatórios HTML/JSON):
+ *   ./tests/k6/run_k6.sh load
+ *   ./tests/k6/run_k6.sh load --open-report
+ *
+ *   # Via k6 diretamente:
+ *   k6 run tests/k6/load_test.js
+ *   BASE_URL=http://localhost:80 k6 run tests/k6/load_test.js
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * Variáveis de ambiente:
  *   BASE_URL      → URL base do sistema        (padrão: http://nginx)
- *   K6_SCENARIO   → Cenário a executar         (padrão: load)
  *   SEED_COUNT    → URLs criadas no setup      (padrão: 200)
- *   TEST_DURATION → Duração do cenário load    (padrão: 60s)
+ *   TEST_DURATION → Duração do teste           (padrão: 60s)
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * Thresholds (SLOs):
@@ -63,33 +53,10 @@ const redirectDuration = new Trend("redirect_duration", true);// Latência da op
 // ── Configuração ─────────────────────────────────────────────────────────────
 const BASE_URL    = __ENV.BASE_URL      || "http://nginx";
 const SEED_COUNT  = parseInt(__ENV.SEED_COUNT  || "200", 10);
-const SCENARIO    = __ENV.K6_SCENARIO   || "load";
-
-// ── Seleção dinâmica de cenários ─────────────────────────────────────────────
-// Um cenário só é ativado se K6_SCENARIO bater com seu nome ou for "all".
-// Cenários inativos recebem startTime impossível para serem ignorados pelo K6.
-function active(name) {
-  return SCENARIO === "all" || SCENARIO === name;
-}
-
-function maybeDisable(name) {
-  return active(name) ? {} : { startTime: "87600h" }; // ~10 anos no futuro
-}
 
 // ── Definição dos cenários ───────────────────────────────────────────────────
 const scenarios = {
-
-  // ── Smoke: validação rápida antes de qualquer teste de carga ──────────────
-  smoke: {
-    executor: "constant-vus",
-    vus: 2,
-    duration: "1m",
-    exec: "smokeTest",
-    tags: { scenario: "smoke" },
-    ...maybeDisable("smoke"),
-  },
-
-  // ── Load: carga normal — ratio 10:1 (leitura:escrita) ─────────────────────
+  // ── Escrita: 10 req/s (10% do tráfego) ────────────────────────────────────
   write_scenario: {
     executor: "constant-arrival-rate",
     rate: 10,                              // 10 req/s (10% do total)
@@ -98,10 +65,10 @@ const scenarios = {
     preAllocatedVUs: 20,
     maxVUs: 50,
     exec: "createUrl",
-    tags: { scenario: "load" },
-    ...maybeDisable("load"),
+    tags: { scenario: "write" },
   },
 
+  // ── Leitura: 90 req/s (90% do tráfego) ────────────────────────────────────
   read_scenario: {
     executor: "constant-arrival-rate",
     rate: 90,                              // 90 req/s (90% do total)
@@ -110,68 +77,7 @@ const scenarios = {
     preAllocatedVUs: 100,
     maxVUs: 200,
     exec: "redirectUrl",
-    tags: { scenario: "load" },
-    ...maybeDisable("load"),
-  },
-
-  // ── Stress: rampa agressiva mantendo o ratio 10:1 ─────────────────────────
-  stress_write: {
-    executor: "ramping-arrival-rate",
-    startRate: 10,
-    timeUnit: "1s",
-    preAllocatedVUs: 50,
-    maxVUs: 150,
-    stages: [
-      { duration: "2m", target: 20  },    // aquecimento
-      { duration: "3m", target: 30  },
-      { duration: "3m", target: 50  },    // ponto de pressão
-      { duration: "2m", target: 0   },    // cool-down
-    ],
-    exec: "createUrl",
-    tags: { scenario: "stress" },
-    ...maybeDisable("stress"),
-  },
-
-  stress_read: {
-    executor: "ramping-arrival-rate",
-    startRate: 90,
-    timeUnit: "1s",
-    preAllocatedVUs: 200,
-    maxVUs: 500,
-    stages: [
-      { duration: "2m", target: 180 },
-      { duration: "3m", target: 270 },
-      { duration: "3m", target: 450 },    // 5x a carga normal
-      { duration: "2m", target: 0   },
-    ],
-    exec: "redirectUrl",
-    tags: { scenario: "stress" },
-    ...maybeDisable("stress"),
-  },
-
-  // ── Soak: carga baixa por longa duração — detecta memory leak ─────────────
-  soak_write: {
-    executor: "constant-arrival-rate",
-    rate: 5,                               // 5 req/s escrita
-    timeUnit: "1s",
-    duration: "30m",
-    preAllocatedVUs: 10,
-    maxVUs: 30,
-    exec: "createUrl",
-    tags: { scenario: "soak" },
-    ...maybeDisable("soak"),
-  },
-
-  soak_read: {
-    executor: "constant-arrival-rate",
-    rate: 45,                              // 45 req/s leitura (ratio 10:1 mantido)
-    timeUnit: "1s",
-    duration: "30m",
-    preAllocatedVUs: 60,
-    maxVUs: 120,
-    exec: "redirectUrl",
-    tags: { scenario: "soak" },
-    ...maybeDisable("soak"),
+    tags: { scenario: "read" },
   },
 };
 
@@ -216,54 +122,10 @@ export function setup() {
   return { urlMap };
 }
 
-// ── Cenário: Smoke ────────────────────────────────────────────────────────────
-/**
- * Valida que a API está saudável e consegue executar 1 ciclo completo
- * antes de qualquer teste de carga. Falha aqui = não prosseguir.
- */
-export function smokeTest(data) {
-  // 1. Health check
-  const health = http.get(`${BASE_URL}/health`, {
-    tags: { operation: "health", scenario: "smoke" },
-  });
-  check(health, {
-    "smoke: /health status 200":   (r) => r.status === 200,
-    "smoke: redis connected":      (r) => JSON.parse(r.body)?.redis === "connected",
-    "smoke: cassandra connected":  (r) => JSON.parse(r.body)?.cassandra === "connected",
-  });
-  errorRate.add(health.status !== 200);
-
-  sleep(0.5);
-
-  // 2. Ciclo criar → redirecionar (valida o fluxo end-to-end)
-  const post = http.post(
-    `${BASE_URL}/api/v1/shorten`,
-    JSON.stringify({ url: generateUrl() }),
-    { headers: { "Content-Type": "application/json" }, tags: { operation: "create", scenario: "smoke" } }
-  );
-  const ok = check(post, { "smoke: create status 201": (r) => r.status === 201 });
-  errorRate.add(!ok);
-
-  if (ok) {
-    const shortcode = JSON.parse(post.body)?.short_code;
-    if (shortcode) {
-      sleep(0.1);
-      const redirect = http.get(`${BASE_URL}/${shortcode}`, {
-        redirects: 0,
-        tags: { operation: "redirect", scenario: "smoke" },
-      });
-      check(redirect, { "smoke: redirect status 302": (r) => r.status === 302 });
-      errorRate.add(redirect.status !== 302);
-    }
-  }
-
-  sleep(1);
-}
-
-// ── Cenário: Escrita (todos os testes de carga) ───────────────────────────────
+// ── Cenário: Escrita ──────────────────────────────────────────────────────────
 /**
  * Cria uma nova URL encurtada via POST /api/v1/shorten.
- * Executado pelo write_scenario, stress_write e soak_write.
+ * Executado pelo write_scenario.
  */
 export function createUrl() {
   const start = Date.now();
@@ -284,10 +146,10 @@ export function createUrl() {
   sleep(0.1); // 100ms think time
 }
 
-// ── Cenário: Leitura (todos os testes de carga) ───────────────────────────────
+// ── Cenário: Leitura ──────────────────────────────────────────────────────────
 /**
  * Redireciona via GET /{shortcode} sem seguir o redirect (valida 302 + Location).
- * Executado pelo read_scenario, stress_read e soak_read.
+ * Executado pelo read_scenario.
  */
 export function redirectUrl(data) {
   // Seleciona URL aleatória do pool criado no setup()

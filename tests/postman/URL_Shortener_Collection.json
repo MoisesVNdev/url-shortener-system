@@ -1,0 +1,424 @@
+{
+  "info": {
+    "name": "URL Shortener API",
+    "description": "Coleção de testes para a API de encurtamento de URLs",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost",
+      "type": "string"
+    },
+    {
+      "key": "short_url",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "shortcode",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Health & Status",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Verifica a saúde da aplicação (conexão com Redis e Cassandra)"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/containers/health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/containers/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "containers",
+                "health"
+              ]
+            },
+            "description": "Verifica o estado de saúde de todos os containers (Web1, Web2, Nginx, Redis, Cassandra)"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Shorten URL (Escrita)",
+      "item": [
+        {
+          "name": "POST /api/v1/shorten - Exemplo 1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has short_url field\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('short_url');",
+                  "});",
+                  "",
+                  "pm.test(\"short_url is valid\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.short_url).to.include('/');",
+                  "});",
+                  "",
+                  "// Extrai o shortcode da resposta e armazena na variável",
+                  "var jsonData = pm.response.json();",
+                  "var shortcode = jsonData.short_url.split('/').pop();",
+                  "pm.collectionVariables.set(\"shortcode\", shortcode);",
+                  "pm.collectionVariables.set(\"short_url\", jsonData.short_url);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://www.example.com/very/long/url/path?param=value&other=test\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/shorten",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "shorten"
+              ]
+            },
+            "description": "Cria uma URL encurtada. Valida status 201 e extrai o shortcode para uso posterior"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/shorten - Exemplo 2",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has short_url field\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('short_url');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://github.com/MoisesVNdev/url-shortener-system\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/shorten",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "shorten"
+              ]
+            },
+            "description": "Cria outra URL encurtada para teste"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/shorten - URL Inválida",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 422 (Unprocessable Entity)\", function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"not-a-valid-url\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/shorten",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "shorten"
+              ]
+            },
+            "description": "Testa validação de URL inválida. Espera status 422"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Redirect URL (Leitura)",
+      "item": [
+        {
+          "name": "GET /{shortcode} - Com shortcode extraído",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 302 (Redirect)\", function () {",
+                  "    pm.response.to.have.status(302);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has Location header\", function () {",
+                  "    pm.expect(pm.response.headers.get('location')).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/{{shortcode}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "{{shortcode}}"
+              ]
+            },
+            "description": "Redireciona para a URL original usando o shortcode extraído da requisição anterior. Valida status 302 e header Location"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /{shortcode} - Shortcode fixo (Exemplo)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 302 (Redirect) ou 404 (Not Found)\", function () {",
+                  "    pm.expect([302, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/Pa0qa7",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "Pa0qa7"
+              ]
+            },
+            "description": "Tenta redirecionar usando um shortcode fixo. Se existir, retorna 302 com Location header. Se não existir, retorna 404"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /{shortcode} - Shortcode Inválido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 422 (Validation Error)\", function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/abc",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "abc"
+              ]
+            },
+            "description": "Testa validação de shortcode inválido (menos de 4 caracteres). Espera status 422"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Debug & Monitoring",
+      "item": [
+        {
+          "name": "GET /api/v1/debug/urls - Todos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/debug/urls",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "debug",
+                "urls"
+              ]
+            },
+            "description": "Retorna registros de débug com limite padrão de 50 URLs e top 10 shortcodes mais acessados"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/debug/urls - Com limite customizado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/debug/urls?limit=20&top=5",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "debug",
+                "urls"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Número máximo de URLs a retornar (1-500)"
+                },
+                {
+                  "key": "top",
+                  "value": "5",
+                  "description": "Top N shortcodes mais acessados (1-100)"
+                }
+              ]
+            },
+            "description": "Retorna registros de débug com parâmetros customizados. Útil para análise de padrões de acesso"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
