@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     HASHIDS_SALT: str = ""
     CACHE_TTL: int = 86400
 
+    # Expõe /api/v1/debug/urls (lista URLs gravadas). Desligado por padrão;
+    # ligue apenas em desenvolvimento.
+    ENABLE_DEBUG_ENDPOINTS: bool = False
+
     model_config = {"env_file": ".env"}
 
 
