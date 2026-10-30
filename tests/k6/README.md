@@ -134,7 +134,7 @@ explorer.exe results/load_test-summary-20260228-143000.html
 
 **Exemplo de localização completa:**
 ```
-/home/moisesvn/Documentos/Estudo/Portfolio/Encurtador de URL/url-shortener-system/tests/k6/results/load_test-summary-20260228-143530.html
+url-shortener-system/tests/k6/results/load_test-summary-20260228-143530.html
 ```
 
 ### Comandos Básicos (Sem o Script)
